@@ -1,29 +1,52 @@
-try{process.chdir("./tools");}catch(e){}
+try {
+  process.chdir("./tools");
+} catch (e) {}
 
-var fs = require('fs');
-var parser = require('../src/parser');
-var execSync = require('child_process').execSync;
-var utils = require('./utils')
+var fs = require("fs");
+var parser = require("../src/parser");
+var execSync = require("child_process").execSync;
+var utils = require("./utils");
 
-function runExample(lang,name){
-	var txt = fs.readFileSync("../examples/"+name+".wy").toString();
-	var js = parser.compile(lang,txt,{romanizeIdentifiers:true})
-	console.log("=== EVAL ===")
-	if (lang == "py"){
-		console.log(utils.pyeval(js))
-	}else if (lang == "js"){
-		eval(js);
-	}
+function readOtherExample(x) {
+  return fs.readFileSync("../examples/" + x + ".wy").toString();
 }
 
-function runAll(lang){
-
-	var files = fs.readdirSync("../examples/");
-	console.log(files);
-	for (var i = 0; i < files.length; i++){
-		runExample(lang,files[i].split(".")[0]);
-	}
+function runExample(lang, name) {
+  var txt = fs.readFileSync("../examples/" + name + ".wy").toString();
+  var sourceCode = parser.compile(lang, txt, {
+    romanizeIdentifiers: true,
+    lib: utils.loadlib(),
+    reader: readOtherExample
+  });
+  console.log("=== COMPILED ===");
+  console.log(sourceCode);
+  console.log("=== EVAL ===");
+  switch (lang) {
+    case "py":
+      console.log(utils.pyeval(sourceCode));
+      break;
+    case "js":
+      eval(sourceCode);
+      break;
+    case "rb":
+      console.log(utils.rbeval(sourceCode));
+      break;
+    default:
+      break;
+  }
 }
 
-// runExample("py","quicksort")
-runAll("js")
+function runAll(lang) {
+  var files = fs.readdirSync("../examples/").filter(x => x.endsWith(".wy"));
+  console.log(files);
+  for (var i = 0; i < files.length; i++) {
+    console.log(`======= Progress ${i + 1}/${files.length} =======`);
+    runExample(lang, files[i].split(".")[0]);
+  }
+}
+
+// runExample("js", "import");
+runAll("js");
+
+// runExample("js", "../../../Downloads/local_test");
+// runExample("js", "import");
