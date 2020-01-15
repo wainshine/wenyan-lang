@@ -1,63 +1,19 @@
 const fs = require("fs");
+const path = require("path");
 var execSync = require("child_process").execSync;
 
-function remotelib(urls) {
-  var src = urls
-    .map(url => execSync(`curl -s ${url}`, { encoding: "utf-8" }).toString())
-    .join("\n")
-    .replace(/"use strict"/g, /"use shit"/);
-  (1, eval)(src);
-}
-
-function catsrc() {
-  var s = "";
-  var rootPath = "../src/";
-  var compilerPath = "../src/compiler/";
-  var compilerList = ["base", "js", "py", "rb", "compilers"];
-  // Must make sure compilers.js in the end.
-  compilerList.push("compilers");
-  compilerList = compilerList.map(filename => compilerPath + filename + ".js");
-  var srcs = fs.readdirSync(rootPath).map(filename => rootPath + filename);
-  srcs = srcs.concat(compilerList);
-
-  for (var i = 0; i < srcs.length; i++) {
-    if (srcs[i].endsWith(".js") && !srcs[i].includes("cli")) {
-      s +=
-        fs
-          .readFileSync(srcs[i])
-          .toString()
-          .replace(/const\s/g, "var ") + ";\n";
-    }
-  }
-  return s;
-}
-
-function loadlib(pth = "../lib/") {
+function loadlib(libDir = path.resolve(__dirname, "../lib/")) {
   var lib = {};
-  var srcs = fs.readdirSync(pth);
+  var srcs = fs.readdirSync(libDir);
   for (var i = 0; i < srcs.length; i++) {
+    const subPath = path.join(libDir, srcs[i]);
     if (srcs[i].endsWith(".wy")) {
-      lib[srcs[i].split(".")[0]] = fs.readFileSync(pth + srcs[i]).toString();
-    } else if (fs.lstatSync(pth + srcs[i]).isDirectory()) {
-      lib[srcs[i]] = loadlib((path = pth + srcs[i] + "/"));
+      lib[srcs[i].split(".")[0]] = fs.readFileSync(subPath).toString();
+    } else if (fs.lstatSync(subPath).isDirectory()) {
+      lib[srcs[i]] = loadlib(subPath);
     }
   }
   return lib;
-}
-
-function uglifier() {
-  remotelib([
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/utils.js",
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/ast.js",
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/parse.js",
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/transform.js",
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/scope.js",
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/output.js",
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/compress.js",
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/propmangle.js",
-    "https://skalman.github.io/UglifyJS-online/uglify/lib/minify.js"
-  ]);
-  return minify;
 }
 
 function pyeval(py) {
@@ -76,19 +32,8 @@ function rbeval(rb) {
   return ret;
 }
 
-function beautifier() {
-  remotelib([
-    "https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.10.2/beautify.js"
-  ]);
-  return js_beautify;
-}
-
 module.exports = {
-  uglifier,
-  beautifier,
-  catsrc,
   loadlib,
-  remotelib,
   pyeval,
   rbeval
 };

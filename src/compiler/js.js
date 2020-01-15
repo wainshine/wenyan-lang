@@ -1,6 +1,5 @@
-try {
-  var Base = require("./base");
-} catch (e) {}
+var Base = require("./base");
+
 class JSCompiler extends Base {
   compile(options = {}) {
     var imports = options.imports || [];
@@ -16,7 +15,7 @@ class JSCompiler extends Base {
     var errcurlvls = [];
 
     function getval(x) {
-      if (x == undefined) {
+      if (x === undefined) {
         return "";
       }
       if (x[0] == "ans") {
@@ -31,16 +30,16 @@ class JSCompiler extends Base {
       var a = this.asc[i];
       if (a.op == "var") {
         for (var j = 0; j < a.count; j++) {
-          if (a.values[j] == undefined) {
+          if (a.values[j] === undefined) {
             a.values[j] = [];
           }
           var name = a.names[j];
           var value = a.values[j][1];
-          if (name == undefined) {
+          if (name === undefined) {
             name = this.nextTmpVar();
             strayvar.push(name);
           }
-          if (value == undefined) {
+          if (value === undefined) {
             if (a.type == "arr") {
               value = "[]";
             } else if (a.type == "num") {
@@ -57,6 +56,8 @@ class JSCompiler extends Base {
               value = "{}";
               prevobj = name;
               prevobjpublic = a.public;
+            } else if (a.type == "any") {
+              value = "undefined";
             }
           }
           js += `${a.public ? `var ${name} = this.` : "var "}${name}=${value};`;
@@ -101,8 +102,10 @@ class JSCompiler extends Base {
         curlvl = cl;
       } else if (a.op == "objend") {
         js += "};";
+        curlvl--;
       } else if (a.op == "objbody") {
         js += `${prevobjpublic ? `${prevobj} = this.` : ""}${prevobj}={`;
+        curlvl++;
       } else if (a.op == "prop") {
         js += `${a.name}:${a.value[1]},`;
       } else if (a.op == "end") {
@@ -110,7 +113,14 @@ class JSCompiler extends Base {
         curlvl--;
         js += ";";
       } else if (a.op == "if") {
+        if (a.elseif) {
+          js += "}else ";
+          curlvl--;
+        }
         js += "if (";
+        if (a.not) {
+          js += "!(";
+        }
         var j = 0;
         while (j < a.test.length) {
           if (a.test[j][0] == "cmp") {
@@ -134,6 +144,9 @@ class JSCompiler extends Base {
             js += getval(a.test[j]);
           }
           j++;
+        }
+        if (a.not) {
+          js += ")";
         }
         js += "){";
         curlvl++;
@@ -214,6 +227,8 @@ class JSCompiler extends Base {
         curlvl++;
       } else if (a.op == "break") {
         js += "break;";
+      } else if (a.op == "continue") {
+        js += "continue;";
       } else if (a.op == "not") {
         var v = getval(a.value);
         var vname = this.nextTmpVar();
@@ -265,7 +280,7 @@ class JSCompiler extends Base {
         strayvar = [];
       } else if (a.op == "catcherr") {
         var ec = errcurlvls[errcurlvls.length - 1];
-        if (a.error == undefined) {
+        if (a.error === undefined) {
           var vname = this.nextTmpVar();
           strayvar.push(vname);
           if (curlvl != ec[0]) {
@@ -303,6 +318,4 @@ class JSCompiler extends Base {
   }
 }
 const JS = JSCompiler;
-try {
-  module.exports = JS;
-} catch (e) {}
+module.exports = JS;

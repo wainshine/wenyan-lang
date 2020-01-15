@@ -1,13 +1,23 @@
-try {
-  var { hanzi2num, num2hanzi } = require("./hanzi2num");
-  var hanzi2pinyin = require("./hanzi2pinyin");
-  var STDLIB = require("./stdlib");
-  var { NUMBER_KEYWORDS, KEYWORDS } = require("./keywords");
-  var version = require("./version");
-  var compilers = require("./compiler/compilers");
-} catch (e) {}
+var { hanzi2num, hanzi2numstr, num2hanzi, bool2hanzi } = require("./hanzi2num");
+var hanzi2pinyin = require("./hanzi2pinyin");
+var STDLIB = require("./stdlib");
+var { NUMBER_KEYWORDS, KEYWORDS } = require("./keywords");
+var version = require("./version");
+var compilers = require("./compiler/compilers");
+var { typecheck, printSignature } = require("./typecheck");
+var { expandMacros, extractMacros } = require("./macro.js");
+var { defaultImportReader } = require("./reader");
 
-function wy2tokens(txt) {
+const defaultTrustedHosts = [
+  "https://raw.githubusercontent.com/LingDong-/wenyan-lang/master"
+];
+
+function wy2tokens(
+  txt,
+  assert = (msg, pos, b) => {
+    if (!b) console.log(`ERROR@${pos}: ${msg}`);
+  }
+) {
   var tokens = [];
   var tok = "";
   var idt = false;
@@ -26,7 +36,9 @@ function wy2tokens(txt) {
   }
   function endnum() {
     if (num) {
-      tokens.push(["num", hanzi2num(tok), i]);
+      const numStr = hanzi2numstr(tok);
+      assert(`Invalid number "${tok}".`, i, numStr != null);
+      tokens.push(["num", numStr, i]);
       tok = "";
       num = false;
     }
@@ -141,11 +153,13 @@ function wy2tokens(txt) {
   }
   if (tok.length) {
     if (num) {
-      tokens.push(["num", hanzi2num(tok)]);
+      const numStr = hanzi2numstr(tok);
+      assert(`Invalid number "${tok}".`, i, numStr != null);
+      tokens.push(["num", numStr]);
     } else if (data) {
       tokens.push(["data", tok]);
     } else {
-      console.log("[Tokenizer Error] Unterminated identifier.");
+      assert("Unterminated identifier.", i, false);
     }
   }
   return tokens;
@@ -180,7 +194,7 @@ function tokenRomanize(tokens, method) {
     if (tokens[i][0] == "iden" && !isRoman(tokens[i][1])) {
       var r = idenMap[tokens[i][1]];
       var key = tokens[i][1];
-      if (r != undefined) {
+      if (r !== undefined) {
         tokens[i][1] = r;
       } else {
         if (method == "pinyin") {
@@ -204,9 +218,22 @@ function tokenRomanize(tokens, method) {
   }
 }
 
+function defaultLogCallback(x) {
+  return typeof x == "string"
+    ? console.log(x)
+    : console.dir(x, { depth: null, maxArrayLength: null });
+}
+
+function defaultErrorCallback(e) {
+  console.error(e);
+  process.exit();
+}
+
 function tokens2asc(
   tokens,
-  assert = (msg, pos, b) => console.log(`ERROR@${pos}: ${msg}`)
+  assert = (msg, pos, b) => {
+    if (!b) console.log(`ERROR@${pos}: ${msg}`);
+  }
 ) {
   var asc = [];
   var i = 0;
@@ -215,7 +242,7 @@ function tokens2asc(
     var cmd = gettok(i, 0);
 
     function gettok(idx, jdx) {
-      if (tokens[idx] == undefined) {
+      if (tokens[idx] === undefined) {
         assert(`Unexpected EOF`, pos, false);
       }
       return tokens[idx][jdx];
@@ -236,12 +263,18 @@ function tokens2asc(
       gettok(i, 0) == "decl" &&
       (gettok(i, 1) == "uninit" || gettok(i, 1) == "public")
     ) {
-      typeassert(i + 1, ["num", "iden"], "variable count");
+      typeassert(i + 1, ["num"], "variable count");
       typeassert(i + 2, ["type"], "variable type");
+      const cnt = Number(gettok(i + 1, 1));
+      assert(
+        `Invalid variable count ${cnt}`,
+        pos,
+        Number.isSafeInteger(cnt) && cnt > 0
+      );
 
       var x = {
         op: "var",
-        count: gettok(i + 1, 1),
+        count: cnt,
         type: gettok(i + 2, 1),
         values: [],
         names: [],
@@ -266,7 +299,7 @@ function tokens2asc(
       typeassert(i + 1, ["type"], "variable type");
       typeassert(
         i + 2,
-        ["data", "num", "lit", "iden", "bool"],
+        ["data", "num", "lit", "iden", "bool", "any"],
         "variable initialization"
       );
 
@@ -279,7 +312,7 @@ function tokens2asc(
         pos
       };
       i += 3;
-      if (tokens[i] != undefined && gettok(i, 0) == "name") {
+      if (tokens[i] !== undefined && gettok(i, 0) == "name") {
         x.names = [gettok(i + 1, 1)];
         i += 2;
       }
@@ -306,19 +339,23 @@ function tokens2asc(
       if (gettok(i, 0) == "ctrl" && gettok(i, 1) == "funarg") {
         i++;
         while (!(gettok(i, 0) == "ctrl" && gettok(i, 1) == "funbody")) {
-          if (gettok(i, 0) == "num") {
-            typeassert(i + 1, ["type"], "argument type");
-            var typ = gettok(i + 1, 1);
-            var cnt = gettok(i, 1);
-            x.arity += cnt;
-            i += 2;
-            for (var j = 0; j < cnt; j++) {
-              typeassert(i + j * 2, ["assgn"], "another argument");
-              typeassert(i + j * 2 + 1, ["iden"], "argument");
-              x.args.push({ name: tokens[i + j * 2 + 1][1], type: typ });
-            }
-            i += cnt * 2;
+          typeassert(i, ["num"], "argument count");
+          typeassert(i + 1, ["type"], "argument type");
+          var typ = gettok(i + 1, 1);
+          var cnt = Number(gettok(i, 1));
+          assert(
+            `Invalid argument count ${cnt}.`,
+            pos,
+            Number.isSafeInteger(cnt) && cnt > 0
+          );
+          x.arity += cnt;
+          i += 2;
+          for (var j = 0; j < cnt; j++) {
+            typeassert(i + j * 2, ["assgn"], "another argument");
+            typeassert(i + j * 2 + 1, ["iden"], "argument");
+            x.args.push({ name: tokens[i + j * 2 + 1][1], type: typ });
           }
+          i += cnt * 2;
         }
       }
       asc.push(x);
@@ -345,6 +382,21 @@ function tokens2asc(
       }
       i++;
       asc.push(x);
+    } else if (gettok(i, 0) == "ctrl" && gettok(i, 1) == "iftrue") {
+      asc.push({ op: "if", test: [["ans"]], pos });
+      i++;
+    } else if (gettok(i, 0) == "ctrl" && gettok(i, 1) == "iffalse") {
+      asc.push({ op: "if", test: [["ans"]], not: true, pos });
+      i++;
+    } else if (gettok(i, 0) == "ctrl" && gettok(i, 1) == "elseif") {
+      var x = { op: "if", test: [], elseif: true, pos };
+      i++;
+      while (!(gettok(i, 0) == "ctrl" && gettok(i, 1) == "conj")) {
+        x.test.push(tokens[i]);
+        i++;
+      }
+      i++;
+      asc.push(x);
     } else if (gettok(i, 0) == "ctrl" && gettok(i, 1) == "end") {
       asc.push({ op: "end", pos });
       i++;
@@ -360,12 +412,15 @@ function tokens2asc(
     } else if (gettok(i, 0) == "ctrl" && gettok(i, 1) == "break") {
       asc.push({ op: "break", pos });
       i += 1;
+    } else if (gettok(i, 0) == "ctrl" && gettok(i, 1) == "continue") {
+      asc.push({ op: "continue", pos });
+      i += 1;
     } else if (gettok(i, 0) == "ctrl" && gettok(i, 1) == "else") {
       asc.push({ op: "else", pos });
       i += 1;
     } else if (gettok(i, 0) == "op") {
       typeassert(i + 2, ["opord"]);
-      var x = {};
+      var x = { pos };
       if (gettok(i + 2, 1) == "l") {
         x.lhs = tokens[i + 1];
         x.rhs = tokens[i + 3];
@@ -538,12 +593,23 @@ function tokens2asc(
       asc.push({ op: "discard", pos });
       i++;
     } else if (gettok(i, 0) == "take") {
-      asc.push({ op: "take", count: gettok(i + 1, 1), pos });
+      typeassert(i + 1, ["num"], "argument count");
+      const cnt = Number(gettok(i + 1, 1));
+      assert(
+        `Invalid argument count ${cnt}`,
+        pos,
+        Number.isSafeInteger(cnt) && cnt > 0
+      );
+      asc.push({ op: "take", count: cnt, pos });
       i += 2;
     } else if (gettok(i, 0) == "import" && gettok(i, 1) == "file") {
-      typeassert(i + 2, ["import"]);
       var x = { op: "import", file: gettok(i + 1, 1), iden: [], pos };
-      i += 3;
+      i += 2;
+      while (gettok(i, 0) == "import" && gettok(i, 1) == "in") {
+        x.file += "/" + gettok(i + 1, 1);
+        i += 2;
+      }
+      i += 1;
       if (tokens[i] && gettok(i, 0) == "import" && gettok(i, 1) == "iden") {
         i++;
         while (!(gettok(i, 0) == "import" && gettok(i, 1) == "idenend")) {
@@ -577,67 +643,75 @@ function tokens2asc(
     } else if (gettok(i, 0) == "comment") {
       asc.push({ op: "comment", value: tokens[i + 1], pos });
       i += 2;
+    } else if (gettok(i, 0) == "macro") {
+      i += 2;
     } else {
       //console.log("Unrecognized",tokens[i])
       i++;
     }
   }
+
   return asc;
 }
 
 function jsWrapModule(name, src) {
-  return `var ${name} = new function(){ ${src} };`;
+  var splitted = name.split("/");
+  var bname = splitted[splitted.length - 1];
+  return `/*___wenyan_module_${name}_start___*/var ${bname} = new function(){ ${src} };/*___wenyan_module_${name}_end___*/`;
+}
+function pyWrapModule(name, src) {
+  // return `#/*___wenyan_module_${name}_start___*/\nclass ${name}:\n${src.split("\n").map(x=>"\t"+x).join("\n")}\n#/*___wenyan_module_${name}_end___*/\n`;
+  return `#/*___wenyan_module_${name}_start___*/\n${src}\n#/*___wenyan_module_${name}_end___*/\n`;
 }
 
-function defaultReader(x) {
-  try {
-    const fs = eval("require")("fs");
-    try {
-      return fs.readFileSync(x + ".wy").toString();
-    } catch (e) {
-      var files = fs.readdirSync("./");
-      for (var i = 0; i < files.length; i++) {
-        if (fs.lstatSync(files[i]).isDirectory()) {
-          try {
-            return fs.readFileSync(files[i] + "/" + x + ".wy").toString();
-          } catch (e) {}
-        }
-      }
-    }
-    console.log("Cannot import ", x);
-  } catch (e) {
-    console.error(
-      `Cannot import ${x}, please specify the "reader" option in compile.`
-    );
+function compile(arg1, arg2, arg3) {
+  let options = {};
+  let txt = "";
+
+  if (typeof arg2 === "string") {
+    // backward compatible
+    txt = arg2;
+    options = { ...arg3, lang: arg1 };
+  } else {
+    txt = arg1;
+    options = arg2;
   }
-}
 
-function compile(
-  lang,
-  txt,
-  {
+  const {
+    lang = "js",
     romanizeIdentifiers = "none",
-    resetVarCnt,
-    logCallback = x =>
-      typeof x == "string"
-        ? console.log(x)
-        : console.dir(x, { depth: null, maxArrayLength: null }),
-    errorCallback = process.exit,
-    lib = typeof STDLIB == undefined ? {} : STDLIB,
-    reader = defaultReader
-  } = {}
-) {
+    resetVarCnt = true,
+    logCallback = defaultLogCallback,
+    errorCallback = defaultErrorCallback,
+    lib = STDLIB,
+    strict = false,
+
+    // import options
+    entryFilepath = undefined,
+    importPaths = [],
+    importCache = {},
+    importContext = {},
+    allowHttp = false,
+    trustedHosts = [],
+    requestTimeout = 2000
+  } = options;
+
+  trustedHosts.push(...defaultTrustedHosts);
+
+  const reader = defaultImportReader;
+
+  const importOptions = {
+    entryFilepath,
+    importPaths,
+    importCache,
+    importContext,
+    allowHttp,
+    trustedHosts,
+    requestTimeout
+  };
+
   if (resetVarCnt) idenMap = {};
   txt = (txt || "").replace(/\r\n/g, "\n");
-
-  var tokens = wy2tokens(txt);
-
-  logCallback("\n\n=== [PASS 1] TOKENIZER ===");
-  logCallback(tokens);
-
-  if (romanizeIdentifiers != "none") {
-    tokenRomanize(tokens, romanizeIdentifiers);
-  }
 
   var txtlines = txt.split("\n");
   function assert(msg, pos, b) {
@@ -665,67 +739,154 @@ function compile(
     return 0;
   }
 
+  var macros = extractMacros(txt, {
+    lib,
+    reader,
+    lang,
+    importOptions
+  });
+  txt = expandMacros(txt, macros);
+
+  logCallback("\n\n=== [PASS 0] EXPAND-MACROS ===");
+  logCallback(macros);
+  // logCallback(txt);
+
+  var tokens = wy2tokens(txt, assert);
+
+  logCallback("\n\n=== [PASS 1] TOKENIZER ===");
+  logCallback(tokens);
+
+  if (romanizeIdentifiers != "none") {
+    tokenRomanize(tokens, romanizeIdentifiers);
+  }
+
   var asc = tokens2asc(tokens, assert);
 
   logCallback("\n\n=== [PASS 2] ABSTRACT SYNTAX CHAIN ===");
   logCallback(asc);
 
+  if (strict) {
+    logCallback("\n\n=== [PASS 2.5] TYPECHECK ===");
+    logCallback(printSignature(typecheck(asc, assert)));
+  }
+
   logCallback("\n\n=== [PASS 3] COMPILER ===");
   var imports = [];
-  var mwrapper = jsWrapModule;
+  var mwrapper = { js: jsWrapModule, py: pyWrapModule, rb: x => x }[lang];
   if (!compilers[lang]) {
     console.log(compilers);
     return logCallback("Target language not supported.");
   }
   var klass = compilers[lang];
   var compiler = new klass(asc);
-  var result = compiler.compile({ imports });
-  var { imports, result } = result;
+  var { imports, result } = compiler.compile({ imports });
   var targ = result;
-  if (lang == "rb") mwrapper = x => x;
   logCallback(targ);
   imports = imports || [];
   imports = Array.from(new Set(imports));
+  logCallback("Loading imports", imports);
   for (var i = 0; i < imports.length; i++) {
-    var isrc;
+    var isrc, entry;
     if (imports[i] in lib[lang]) {
       isrc = lib[lang][imports[i]];
     } else if (imports[i] in lib) {
       isrc = lib[imports[i]];
     } else {
-      isrc = reader(imports[i]);
+      const file = reader(imports[i], importOptions);
+      isrc = file.src;
+      entry = file.entry;
     }
     targ =
-      `/*___wenyan_module_${imports[i]}_start___*/` +
       mwrapper(
         imports[i],
-        compile(lang, isrc, {
-          romanizeIdentifiers,
+        compile(isrc, {
+          ...options,
+          entryFilepath: entry,
           resetVarCnt: false,
-          logCallback,
-          errorCallback,
-          lib
+          strict: false
         })
-      ) +
-      `/*___wenyan_module_${imports[i]}_end___*/` +
-      targ;
+      ) + targ;
   }
 
   return targ;
 }
 
+function isLangSupportedForEval(lang) {
+  if (lang !== "js")
+    throw new Error(
+      `Executing for target language "${lang}" is not supported in current environment`
+    );
+  return true;
+}
+
+function hanzinize(value) {
+  if (typeof value == "number") {
+    return num2hanzi(value);
+  } else if (typeof value == "boolean") {
+    return bool2hanzi(value);
+  } else if (Array.isArray(value)) {
+    return value.map(i => hanzinize(i)).join("。");
+  } else {
+    return value;
+  }
+}
+
+function outputHanziWrapper(log, outputHanzi) {
+  return function output(...args) {
+    log(...args.map(i => (outputHanzi ? hanzinize(i) : i)));
+  };
+}
+
+function evalCompiled(compiledCode, options = {}) {
+  const {
+    outputHanzi = true,
+    scoped = false,
+    lang = "js",
+    output = console.log
+  } = options;
+
+  isLangSupportedForEval(lang);
+
+  let code = compiledCode;
+
+  (() => {
+    const _console_log = console.log;
+    console.log = outputHanziWrapper(output, outputHanzi);
+    try {
+      if (!scoped && "window" in this) {
+        window.eval(code);
+      } else {
+        eval(code);
+      }
+    } catch (e) {
+      throw e;
+    } finally {
+      console.log = _console_log;
+    }
+  })();
+}
+
+function execute(source, options = {}) {
+  const { lang = "js" } = options;
+  isLangSupportedForEval(lang);
+  const compiled = compile(source, options);
+  evalCompiled(compiled, options);
+}
+
 var parser = {
   compile,
+  evalCompiled,
+  execute,
   version,
   wy2tokens,
   tokens2asc,
   hanzi2num,
+  hanzi2numstr,
   num2hanzi,
+  bool2hanzi,
   hanzi2pinyin,
   KEYWORDS,
   NUMBER_KEYWORDS,
   STDLIB
 };
-try {
-  module.exports = parser;
-} catch (e) {}
+module.exports = parser;

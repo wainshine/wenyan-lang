@@ -1,4 +1,4 @@
-var NUMBER_KEYWORDS = "負又零一二三四五六七八九十百千萬億兆京垓秭穣溝澗正載極分釐毫絲忽微塵埃渺漠".split(
+var NUMBER_KEYWORDS = "負·又零〇一二三四五六七八九十百千萬億兆京垓秭穰溝澗正載極分釐毫絲忽微纖沙塵埃渺漠".split(
   ""
 );
 
@@ -13,6 +13,7 @@ var KEYWORDS_DEFINE = {
   術: ["type", "fun"],
   爻: ["type", "bol"],
   物: ["type", "obj"],
+  元: ["type", "any"],
   書之: ["print"],
   名之曰: ["name"],
   施: ["call", "r"],
@@ -44,10 +45,14 @@ var KEYWORDS_DEFINE = {
   為是: ["ctrl", "whilen0"],
   遍: ["ctrl", "whilen1"],
   乃止: ["ctrl", "break"],
+  乃止是遍: ["ctrl", "continue"],
 
   若非: ["ctrl", "else"],
   若: ["ctrl", "if"],
   者: ["ctrl", "conj"],
+  若其然者: ["ctrl", "iftrue"],
+  若其不然者: ["ctrl", "iffalse"],
+  或若: ["ctrl", "elseif"],
 
   其物如是: ["ctrl", "objbody"],
   之物也: ["ctrl", "objend"],
@@ -83,6 +88,7 @@ var KEYWORDS_DEFINE = {
   陽: ["bool", true],
 
   吾嘗觀: ["import", "file"],
+  中: ["import", "in"],
   之書: ["import", "fileend"],
   方悟: ["import", "iden"],
   之義: ["import", "idenend"],
@@ -95,6 +101,9 @@ var KEYWORDS_DEFINE = {
   之禍歟: ["try", "catcherr1"],
   不知何禍歟: ["try", "catchall"],
   乃作罷: ["try", "end"],
+
+  或云: ["macro", "from"],
+  蓋謂: ["macro", "to"],
 
   注曰: ["comment"],
   疏曰: ["comment"],
@@ -112,6 +121,4 @@ if (!Object.fromEntries) {
 }
 var KEYWORDS = Object.fromEntries(ke);
 
-try {
-  module.exports = { NUMBER_KEYWORDS, KEYWORDS };
-} catch (e) {}
+module.exports = { NUMBER_KEYWORDS, KEYWORDS };

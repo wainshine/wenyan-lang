@@ -1,9 +1,22 @@
-try {
-  const raw = require.context("../lib", false, /.*\.wy$/);
-
+function loadStdlib() {
   const STDLIB = {};
 
-  raw.keys().forEach(key => (STDLIB[key.slice(2, -3)] = raw(key).default));
+  try {
+    const raw = require.context("../lib", true, /.*\.wy$/);
 
-  module.exports = STDLIB;
-} catch (e) {}
+    raw.keys().forEach(key => {
+      const parts = key.slice(2, -3).split("/");
+      const data = raw(key).default;
+      let sublib = STDLIB;
+      for (const part of parts.slice(0, -1)) {
+        if (!sublib[part]) sublib[part] = {};
+        sublib = sublib[part];
+      }
+      sublib[parts[parts.length - 1]] = data;
+    });
+  } catch (e) {} // ignore "require.context" error for testing
+
+  return STDLIB;
+}
+
+module.exports = loadStdlib();

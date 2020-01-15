@@ -5,3 +5,6 @@ build/wenyan-macos
 build/wenyan-win.exe
 temp
 dist
+/tools/calendar.html
+藏書樓
+.node-xmlhttprequest-*
