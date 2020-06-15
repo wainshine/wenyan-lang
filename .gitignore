@@ -8,3 +8,5 @@ dist
 /tools/calendar.html
 藏書樓
 .node-xmlhttprequest-*
+typings
+tools/wiki/repo

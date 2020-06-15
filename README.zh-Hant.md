@@ -2,11 +2,13 @@
 
 # 文言 wenyan-lang
 
-[http://wenyan-lang.lingdong.works](http://wenyan-lang.lingdong.works)
+### [wy-lang.org](https://wy-lang.org) | [Wiki](https://github.com/wenyan-lang/wenyan/wiki)
 
-[English](./README.md) | [简体中文](./README.zh-Hans.md) | 繁体中文
+[English](./README.md) | [简体中文](./README.zh-Hans.md) | 繁體中文
 
 文言文編程語言。 [在線體驗](http://wenyan-lang.lingdong.works/ide.html)
+
+> 🚧 請註意，中文文檔並非實時更新，僅供參考。如有歧義，請以英文版文檔為主。
 
 ![](screenshots/screenshot01.png)
 
@@ -67,7 +69,7 @@ console.log("問天地好在。");
 使用以下命令安裝本編譯器：
 
 ```bash
-npm install -g @wenyanlang/cli
+npm install -g @wenyan/cli
 ```
 
 嘗試運行內置的例子，例如：

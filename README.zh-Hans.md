@@ -2,11 +2,13 @@
 
 # 文言 wenyan-lang
 
-[http://wenyan-lang.lingdong.works](http://wenyan-lang.lingdong.works)
+### [wy-lang.org](https://wy-lang.org) | [Wiki](https://github.com/wenyan-lang/wenyan/wiki)
 
-[English](./README.md) | 简体中文 | [繁体中文](./README.zh-Hant.md)
+[English](./README.md) | 简体中文 | [繁體中文](./README.zh-Hant.md)
 
 文言文編程語言。 [在线体验](http://wenyan-lang.lingdong.works/ide.html)
+
+> 🚧 请注意，中文文档并非实时更新，仅供参考。如有歧义，请以英文版文档为主。
 
 ![](screenshots/screenshot01.png)
 
@@ -67,7 +69,7 @@ for (var i = 0; i < n; i++) {
 使用以下命令安装本编译器：
 
 ```bash
-npm install -g @wenyanlang/cli
+npm install -g @wenyan/cli
 ```
 
 尝试运行内置的例子，例如：
